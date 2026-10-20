@@ -1,0 +1,36 @@
+{
+  "title": "K758 Rust M1 D A-to-D Restoration",
+  "date": "2026-10-20",
+  "method": "OEM-captured nine-packet profile transaction; Rust hidapi Windows interrupt-output transport",
+  "firmware_write_packets": 9,
+  "read_opcode_0x07": "verified to return captured customized active keymap on this physical K758",
+  "read_opcode_0x0F": "returned default-looking assignments, not customized M1 keymap on this K758",
+  "prewrite_m1_map_matches_captured_192_bytes": true,
+  "postwrite_changed_keymap_offsets": [
+    {
+      "offset_zero_based": 86,
+      "before": "04",
+      "after": "07"
+    }
+  ],
+  "prewrite_D_entry": "02 02 04",
+  "postwrite_D_entry": "02 02 07",
+  "W_macro_reference_before_and_after": "05 01 00",
+  "all_other_191_keymap_bytes_unchanged": true,
+  "four_lighting_blocks_unchanged": true,
+  "software_readback_verified": true,
+  "physical_keypress_test_result": "not recorded; requires user keypress",
+  "device_addressing": {
+    "VID": "0C45",
+    "PID": "5004",
+    "interface": 1,
+    "usage_page": "FF1C",
+    "usage": "0092",
+    "report_id": "04"
+  },
+  "provenance": {
+    "oem_capture_sha256": "bd0832ed99079054817dd5a5c2337d023514965f527a9a5621c5d13e83750d0f",
+    "preview_sha256": "755ea88e6fc5ea974f2d2e0e917eeba095bd5240f2314ca998e976bdac2f0777"
+  },
+  "packaged_fixture_removes_original_absolute_path": true
+}

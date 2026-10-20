@@ -1,0 +1,9 @@
+[package]
+name="k758-protocol-lab"
+version="0.1.0"
+edition="2021"
+[dependencies]
+anyhow="1"
+serde_json="1"
+hidapi={version="2.6.7",default-features=false,features=["windows-native"]}
+windows-sys={version="0.59",features=["Win32_Foundation","Win32_Security","Win32_Storage_FileSystem","Win32_Devices_HumanInterfaceDevice"]}

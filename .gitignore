@@ -218,3 +218,32 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# K758-Rust-Driver project exclusions
+/target/
+/build/
+/dist/
+*.exe
+*.pdb
+*.dll
+.env
+.env.*
+*.pem
+*.key
+*.pfx
+*.p12
+*.secret
+*_credentials.*
+/config.local.*
+/captures/
+/investigation/
+*.jsonl
+*.log
+*.pcap
+*.pcapng
+.vscode/
+.idea/
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db

@@ -1,0 +1,16 @@
+name: Windows Rust test and build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Verify captured M1 fixture and Rust code
+        run: cargo test --release
+      - name: Compile standalone Windows binaries
+        run: cargo build --release
