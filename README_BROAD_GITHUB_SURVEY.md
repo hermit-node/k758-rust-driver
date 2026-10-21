@@ -241,6 +241,13 @@ This is a Rust Windows **software macro engine**. Its README explicitly states t
 | **Neuron** | Windows Raw Input + vendor stream decoder; limited suppression hook | **SW** RGB compositor with Razer HW adapters | **SW** trigger/action/macros; Razer vendor held-key reports | **Highest** unified Rust event/RGB/action architecture |
 | **HidForge** | Windows Raw Input, learnable HID bits, scan codes | None | **SW** timed macros, record/playback, trigger profiles | **High** discovery and macro runtime |
 | **WinRawInput** | Windows Raw Input Pascal type/ABI declarations | None | None | Read-only Windows ABI reference |
+| **[Wyrm](https://github.com/Maxwegy/wyrm)** (Redragon M811 mouse) | Windows Raw Input mouse activity and polling | **HW** mouse-specific effect/color settings | **HW** button assignments and macro slots/readback | Safe configuration approach; incompatible protocol; snapshot lacks macro inventory |
+| **[HidRawData](https://github.com/djlastnight/HidRawData)** | Windows Raw Input keyboard/mouse/vendor reports, actual key up/down/repeat | None | None (reader only) | Device-aware event decoding; no suppression |
+| **[HIDAPI](https://github.com/libusb/hidapi)** | HID input/output/feature transport, **not** OS keyboard interception | None itself | No K758 codec; transport only | **Already verified** in our Rust K758 HID configuration path |
+| **[Spratley HIDra](https://github.com/Spratley/HIDra)** | C++ Windows Raw Input keyboard/gamepad with per-frame key state | None | None | Frame state/edge tracking only; **not** luizjr/HIDra firmware editor |
+| **[karstx/hidra](https://github.com/karstx/hidra)** | Pure-Rust HID I/O and report-descriptor parsing | None directly | None directly | Read-only descriptor parser and error-handling reference; keep proven `hidapi` transport |
+| **[hidraw-rs](https://github.com/douglaz/hidraw-rs)** | Linux `hidraw` I/O only (not Windows Raw Input) | None | None | Future Linux backend inspiration; unsupported on Windows |
+
 
 ## 10. What to implement next in this Rust repository
 
@@ -254,3 +261,166 @@ This is a Rust Windows **software macro engine**. Its README explicitly states t
 6. **Safe M1–M4 editing:** read complete live keymaps + macros first, snapshot before any change, use verified per-bank selection/readback, exact prewrite checks, write only what we can restore, and independently confirm the result. No silent profile overwrites.
 
 **Result we need before claiming success:** press K758 physical key; observe a uniquely sourced event; translate to `KHID:device:slot:edge`; choose a software action; no duplicate original Windows key when replacement is enabled; avoid stuck keys; keep the K758's hardware profiles, stored macros and existing RGB unchanged unless the user specifically authorizes writes.
+
+
+## 11. [Wyrm](https://github.com/Maxwegy/wyrm): Windows Redragon mouse configuration, RGB, onboard macros
+
+Wyrm is a **Windows/PySide6, Python-based HID controller for multiple mouse brands**, with Redragon M811 PRO as the author's substantially verified SinoWealth target. The project handles DPI, buttons, macro slots, RGB, readback, profiles and app-aware automatic switching. It is **not** a K758 driver and is **not** a Windows keyboard suppression engine.
+
+### Input capture — activity and rate measurement, NOT KHID identity
+
+[`wyrm/core/rawinput.py`](https://github.com/Maxwegy/wyrm/blob/main/wyrm/core/rawinput.py) implements one reference-counted **Raw Input mouse** listener shared by the Qt activity badge and polling-rate tester. It registers Generic Desktop page/usage `01:02` with `RegisterRawInputDevices`, receives `WM_INPUT`, reads `RAWINPUTHEADER.hDevice`, resolves device paths through `GetRawInputDeviceInfoW`, extracts VID/PID, emits throttled device *activity* notifications and timestamps for rate measurements. It **does not decode individual keyboard switch events, identify a K758 physical key, block an original VK or bind macros to raw-input edges**.
+
+**Applicability:** reuse the single-owner Raw Input registration pattern and device-arrival provenance model; extend to K758 keyboard and vendor input collections while retaining report ID, source path/handle and timestamp. VID/PID and device activity alone are insufficient KHID physical-slot identities. For keyboard suppression, continue investigating [HIDeous](https://github.com/dero/HIDeous), not Wyrm's activity hub.
+
+### RGB — firmware effect/configuration codec, separate from event handling
+
+[`wyrm/drivers/sinowealth/codec/settings.py`](https://github.com/Maxwegy/wyrm/blob/main/wyrm/drivers/sinowealth/codec/settings.py) decodes an **onboard 154-byte settings block** into LED effect, color, effect speed/brightness and DPI-stage colors. The codec copies the original buffer and patches only known offsets; unknown bytes are preserved. Its model-specific JSON layout describes offsets and which effect fields are proven. The author treats **streaming, steady and breathing** as verified effects; other effects are experimental.
+
+**Applicability:** build a lossless K758 `LightingConfig` codec, preserving unknown bits/bytes, with explicit per-feature verification gates and a separate optional software RGB renderer. Our K758 **`0x05` lighting-block read** is verified, but a corresponding safe RGB write and per-key streaming protocol are **not yet verified**. The SinoWealth mouse's lighting offsets, commands and RGB ordering must **not** be applied to K758.
+
+### Onboard key assignments — typed action -> stored hardware slot
+
+[`wyrm/drivers/sinowealth/codec/buttons.py`](https://github.com/Maxwegy/wyrm/blob/main/wyrm/drivers/sinowealth/codec/buttons.py) uses a **4-byte button action** inside an **88-byte button block**. It encodes mouse buttons (`11`), HID keyboard plus modifiers (`21`), consumer controls (`22`), DPI, fire, special actions and a macro reference (`70 <macro-index> <mode> <count>`). [`wyrm/drivers/sinowealth/driver.py`](https://github.com/Maxwegy/wyrm/blob/main/wyrm/drivers/sinowealth/driver.py) constructs a complete desired button block, compares it with a newly read live block, and skips unchanged writes.
+
+**Applicability:** borrow the action enum/model and encode/decode/compare design. Do **not** copy 4-byte action codes or macro slot numbers to K758: K758 stores **3-byte keymap triples**, including `02 02 07` for D and `05 01 00` for an M1 macro reference. Preserve unknown K758 triples exactly; check whole-bank prewrite state and avoid altering unrelated keys.
+
+### Onboard macros — explicit event codec and read-before-write
+
+[`wyrm/drivers/sinowealth/codec/macro.py`](https://github.com/Maxwegy/wyrm/blob/main/wyrm/drivers/sinowealth/codec/macro.py) encodes keyboard down/up and mouse down/up with a **three-byte** event `(command, delay_ms_after, code)`. It uses command bytes `50/D0` for keyboard and `10/90` for mouse events; delays longer than 255 ms use filler events. A button's macro action points to a firmware macro slot. In [`driver.py`](https://github.com/Maxwegy/wyrm/blob/main/wyrm/drivers/sinowealth/driver.py), `apply` uses `read_macro` to **skip an unchanged macro**, then `write_macro` for changes. This is independent **firmware macro binding**, not a software macro playback daemon.
+
+**Applicability:** maintain a high-level event model (`KeyDown`/`KeyUp`/`MouseDown`/`MouseUp`/`Delay`/`Repeat`) with a **K758-specific binary serializer**. For the actual K758 captured 82-byte `0x0A` macro blob, use the already validated **Yama/CK108 16-byte header, offset table, and four-byte events**, **not** Wyrm's unrelated 3-byte SinoWealth encoding. A safe macro writer first requires independently verifying K758 live macro reading (`0x09` is a hypothesis, not yet tested).
+
+### Profiles, backups, and an important incompleteness
+
+[`wyrm/core/profile_manager.py`](https://github.com/Maxwegy/wyrm/blob/main/wyrm/core/profile_manager.py) maintains PC-side activity profiles and app/foreground rules and writes the relevant settings to each supported mouse when switched. [`driver.py`](https://github.com/Maxwegy/wyrm/blob/main/wyrm/drivers/sinowealth/driver.py) performs: link check -> fresh settings/buttons read -> patch only known bytes -> skip no-op -> write macros then settings/buttons -> read back/compare. It also requires user consent before first write, gates experimental features, and supports dry runs.
+
+**Crucial limitation discovered in source:** `read_state()` returns a snapshot of **`settings.bin` and `buttons.bin` only**, and `restore()` likewise restores only those two blocks. It does **not** save/restore a complete array of live macro slots, despite the separate macro read/write functions. We should **not** describe this as a complete device memory backup or replicate that omission.
+
+**KHID usage:** emulate its device-family adapter boundary, original-byte preservation, dry run, per-device permission, model allowlist and verify-after-write, but require the **full retrievable macro inventory** (or mark the snapshot explicitly partial) before general K758 firmware remapping. PC-side profile switches must not silently rewrite hardware M1–M4 on every application change; software KHID profiles and firmware banks are different constructs.
+
+### Strong protocol incompatibility — do not send mouse packets to K758
+
+Wyrm's Redragon mouse uses VID/PID `258A:002E` cable or `258A:002F` receiver, with report `05` command channel, report `08` block transfers (up to 519-byte feature report), and 154-byte settings / 88-byte button blocks. See [`docs/protocols/sinowealth-wireless.md`](https://github.com/Maxwegy/wyrm/blob/main/docs/protocols/sinowealth-wireless.md).
+
+Our K758 uses VID/PID `0C45:5004`, vendor collection `FF1C:0092`, 64-byte report ID `04`, and the independently verified K758 read/write command family. The fact both devices are Redragon and use HID does **not** make their command bytes, RGB offsets, event records or macro storage compatible.
+
+**Interesting KHID-related precedent:** Wyrm's mouse-specific vendor profile-cycle assignment originally depended on OEM software; Wyrm maps its PC-side profile-next/previous actions to **F24/F23** as software-interpreted markers. This supports the *general pattern* of mapping a physical control to a distinctive host-visible usage. It does **not** prove the K758 has that marker option or a separate vendor-defined press report.
+
+**Bottom line:** Wyrm is a **high-value configuration and safety reference**, a **moderate RGB codec reference**, and only a **low-value physical-key capture/suppression reference**. Use its software architecture and state protection, not its mouse-specific packet format.
+
+
+## 12. [HidRawData](https://github.com/djlastnight/HidRawData): Windows C# raw keyboard, mouse and vendor HID event reader
+
+This project is a **Windows Raw Input capture/decoding library**, not an onboard keyboard controller. It is implemented in .NET C# (documented as tested on Windows 7/10); its companion visual tool is [HidRawDataWatcher](https://github.com/djlastnight/HidRawDataWatcher).
+
+- [`HidDataReader.cs`](https://github.com/djlastnight/HidRawData/blob/master/HidRawData/Hid/HidDataReader.cs): enumerates device usage page/usage, registers `RIDEV_INPUTSINK`, hooks `WM_INPUT` in a WPF window, and raises events.
+- [`HidEvent.cs`](https://github.com/djlastnight/HidRawData/blob/master/HidRawData/Hid/HidEvent.cs): distinguishes `RIM_TYPEKEYBOARD`, `RIM_TYPEMOUSE` and `RIM_TYPEHID`, obtaining source `hDevice`, VK/scan code/extended key flags, modifiers, usage information, and raw HID report data. Importantly, `RAWHID.dwCount` may contain **multiple** reports in one event; it iterates that count instead of assuming one payload.
+- [`HidHandler.cs`](https://github.com/djlastnight/HidRawData/blob/master/HidRawData/Hid/HidHandler.cs): tracks actual key-down and key-up, pressed-key state, modifiers and repeat events, with optional synthesized repeats.
+- [`RawInputHelper.cs`](https://github.com/djlastnight/HidRawData/blob/master/HidRawData/Hid/RawInputHelper.cs) and [Win32 Raw Input declarations](https://github.com/djlastnight/HidRawData/tree/master/HidRawData/Win32/Win32RawInput): enumerate HID collections, discover device identity/descriptor capabilities and parse `GetRawInputData` buffers.
+
+**K758 applicability:** high for building a **single read-only Rust event sink** covering K758 `MI_00` keyboard and `MI_01` vendor collection. Retain source/collection, report ID, timestamp, keyboard VK/scancode when present, and genuine down/up versus repeat. Derive KHID from a verified physical source; keyboard VK alone is **not** proof of which physical switch generated it, especially with onboard remapping. Validate all buffer/count bounds; handle reconnect and release any software-held keys.
+
+**Limits:** the library does **not** suppress Windows keyboard input, provide K758 RGB, program onboard macros, or guarantee that the K758 produces a per-physical-key vendor report. Windows Raw Input registrations are by usage **per process**; own/fan out registration instead of letting multiple listeners compete for the same usage.
+
+## 13. [HIDAPI](https://github.com/libusb/hidapi): the transport we already proved on K758
+
+**This is not another remapping engine.** HIDAPI is the cross-platform C library for USB/Bluetooth **HID device I/O**: enumerate devices, open a specific HID interface/collection, read input reports, write output reports, and exchange feature reports. Windows backend uses `hid.dll`; Linux has `hidraw` and `libusb` backends; macOS uses `IOHidManager`.
+
+**Our existing Windows Rust project already uses the Rust `hidapi` crate** (`Cargo.toml` `hidapi = "2.6.7"` with `windows-native`), backed by HIDAPI's Windows-native backend. No new transport process is needed.
+
+Specific upstream reference points:
+- [`hidapi/hidapi.h`](https://github.com/libusb/hidapi/blob/master/hidapi/hidapi.h): `hid_enumerate` exposes interface number, usage page and usage; `hid_open_path` selects a discovered interface; `hid_write` sends an output report; `hid_read_timeout` waits for an input report; `hid_send_feature_report`/`hid_get_feature_report` handle *feature* reports; some versions provide report-descriptor access.
+- [`windows/hid.c`](https://github.com/libusb/hidapi/blob/master/windows/hid.c): native Windows output path (`hid_write` uses overlapped `WriteFile`); feature reports use `HidD_SetFeature` and other Windows HID APIs. These are **different report types**, not interchangeable command channels.
+- [`hidtest/test.c`](https://github.com/libusb/hidapi/blob/master/hidtest/test.c): example enumeration and read/write diagnostics. Upstream explicitly warns that blind writes can damage devices.
+
+**Verified on our K758:** USB VID/PID `0C45:5004`, vendor-defined interface `MI_01 / Col04` usage `FF1C:0092`, report ID `04`, 64-byte **output** packets. The working Rust path is `HidApi::new` + **select exact enumerated collection** + `HidDevice::write(&[u8; 64])` + `read_timeout` to verify ACKs. A nine-frame M1 transaction wrote the keymap and was independently read back. Every outgoing request uses the **device-specific 16-bit additive checksum** on bytes `[3..63]`; responses echo the original request header/checksum and must be validated accordingly.
+
+**Transport subtlety:** although earlier *hand-written* Windows `WriteFile` attempts failed, this does **not** mean the `WriteFile` API cannot work: upstream HIDAPI's **working `hid_write` implementation itself uses `WriteFile`** with its own valid HID handle, framing and overlapped-I/O handling. The important proof is *our exact HIDAPI invocation* on the correct collection, not that Windows `WriteFile` is intrinsically incompatible.
+
+**K758 application boundaries:**
+1. Keep **one Rust HIDAPI transport** for **explicit configuration** reads/writes (`0x03` status, `0x05` lighting reads, `0x07` active keymap reads, historical `0x08` keymap and `0x0A` macro uploads, plus tentative read-only `0x09` macro probe). Require model/collection verification, 64-byte packet layout, byte-for-byte preflight and independent post-write readback.
+2. Keep **Windows Raw Input `WM_INPUT`** as a distinct **runtime event capture path**: device-source keyboard/VK/scan events and any actual vendor *input* notifications. HIDAPI does **not** replace Windows system keyboard interception or per-device original-key suppression.
+3. Keep **KHID** a third layer: decoded and verified physical source -> stable KHID identity -> profile/action/macro dispatch. HIDAPI alone cannot invent arbitrary native KHID report types or make a device emit unique physical-key codes.
+4. Never use `hid_send_feature_report` for our proven `hid_write` output report just because both are HID; never send arbitrary reports or another model's command. The OEM application must be closed during our K758 configuration I/O.
+
+| Capability | HIDAPI alone | Proven in our K758 driver? |
+|---|---|---|
+| Enumerate/open a specific HID collection | **Yes** | **Yes**, exact vendor collection |
+| Read/write device input/output reports | **Yes** | **Yes**, `hid_write` + `read_timeout`, nine ACKs |
+| Access feature reports | **Yes**, if device supports them | **No need** for successful M1 path |
+| Interpret K758 keymap/macros/RGB | **No** — protocol belongs to our K758 layer | Keymap and lighting read yes; historical macro blob decoded offline |
+| Observe ordinary keyboard presses and suppress original Windows VK | **No** | **Not implemented**; use Windows Raw Input and separate suppression design |
+| Assign a new KHID output directly in firmware | **No** | **Not proven** |
+
+**Practical outcome:** keep `hidapi`, consolidate the duplicated Rust query/transport functions, and add a separate Windows input-capture backend. This is a compatibility/foundation reference, **not a replacement** for HIDeous, HidRawData or Neuron.
+
+
+## 14. [Spratley/HIDra](https://github.com/Spratley/HIDra): C++ Windows Raw Input and per-frame keyboard/gamepad state
+
+**Do not confuse this project with [luizjr/HIDra](https://github.com/luizjr/HIDra).** Despite sharing a name, they are different repositories with different purposes. Spratley's HIDra is a work-in-progress **C++ real-time input library**, with Windows `Raw Input`, gamepad and keyboard polling, and Emscripten/WASM support. It is not Redragon firmware software.
+
+- [`Core/HIDraCore_Windows.cpp`](https://github.com/Spratley/HIDra/blob/main/Core/HIDraCore_Windows.cpp): subclasses a host application's window procedure, registers Generic Desktop keyboard and gamepad collections via `RegisterRawInputDevices`, retrieves `WM_INPUT` using `GetRawInputData`, and forwards keyboard VK/flags or gamepad reports into handlers. Its existing keyboard path passes `VKey` plus flags to a virtual-keystroke parser, **not a durable physical K758 switch ID**. This implementation is intended to run inside the application with an existing `HWND`, not as a background per-device interception service.
+- [`Keyboard/HIDraKeyboardHandler.cpp`](https://github.com/Spratley/HIDra/blob/main/Keyboard/HIDraKeyboardHandler.cpp): stores current key state plus a second bitfield indicating key transitions in the current application frame. `GetKey` means held; `GetKeyDown` means newly pressed; `GetKeyUp` means newly released. `Flush` clears transition flags after a frame.
+- [`Platforms/Windows/Gamepad/HIDraGamepadDecoder_Windows.cpp`](https://github.com/Spratley/HIDra/blob/main/Platforms/Windows/Gamepad/HIDraGamepadDecoder_Windows.cpp): normalizes particular HID gamepad report shapes into buttons and axes; an illustration of **device-specific report decoder -> normalized state**, but it does not decode K758 input reports.
+- [README](https://github.com/Spratley/HIDra): identifies known limitations including device hotplug handling and left/right Shift distinction (scan-code parsing required).
+
+**KHID relevance:** reasonable reference for `raw event -> normalized current held state + transitions`, typed input-source adapters, and per-frame consumers. Rust's KHID core should track edge state by **device identity + verified physical key**, not just aggregate VK state. A UI frame-flush model must **not discard events** between frames; use an ordered event queue and independent release handling in the service, then expose optional frame snapshots to GUI clients.
+
+**RGB / macro binding:** neither stock-firmware RGB commands, macro upload/download, nor a high-level macro action engine was found. It does not suppress default Windows typing. For K758 configuration use **Yama + CK108 + our HIDAPI Rust driver**, and for Windows event capture use **HidRawData + HidForge + Neuron**; for safe replacement/suppression investigate **HIDeous**.
+
+### Consolidated conclusion after the full user-supplied reference list
+
+| Subsystem | Best available code references | First verifiable K758 milestone |
+|---|---|---|
+| USB HID configuration | HIDAPI (already used) + Yama + CK108 | Lossless macro codec test, then separately authorized read-only `0x09` investigation |
+| Physical key discovery | K596 vendor-event bridge + HidForge + HidRawData + Neuron | Trace physical W and an ordinary key with **both** K758 keyboard and vendor HID streams |
+| Stateful KHID events | Neuron held-edge state + Spratley HIDra state + Input Remapper handlers | Real `DOWN/UP` vs `TRIGGER` distinction; correct release on disconnect |
+| Windows suppression | HIDeous correlation and hook architecture | Original VK does **not** leak during explicitly armed remap, while unrelated keyboards still type normally |
+| Software macro engine | Input Remapper + Makima + HidForge | Bind custom KHID to timed press/release/macro, with no recursion or stuck keys |
+| Firmware keymap/macro writing | Yama + CK108 + K758 captured transactions + Wyrm's safety boundaries | Preserve *live* keymap, all retrievable macro data, and all four lighting blocks before any general write |
+| RGB | Yama/CK108 device codecs + Neuron compositor + Wyrm's byte-preserving config strategy | Decode actual K758 `0x05` lighting data; verify writes separately, never guess |
+
+**This survey documents source mechanisms, not a claim that these repositories can already be combined or that KHID interception has been implemented.** The K758 Rust repository's physically verified success remains the M1 keymap restoration via HIDAPI.
+
+
+## 15. [karstx/hidra](https://github.com/karstx/hidra): alternative pure-Rust HID transport and descriptor parser
+
+There are now **three distinct "HIDra" projects** in this survey:
+
+1. [luizjr/HIDra](https://github.com/luizjr/HIDra) — Redragon K586-family **onboard keymap/configuration** (TypeScript/Rust app).
+2. [Spratley/HIDra](https://github.com/Spratley/HIDra) — C++ **Windows Raw Input** keyboard/gamepad polling and per-frame edges.
+3. **[karstx/hidra](https://github.com/karstx/hidra)** — a **pure-Rust, cross-platform HID device I/O library**, an architectural alternative to the already working [libusb/hidapi](https://github.com/libusb/hidapi) + Rust `hidapi` crate.
+
+The karstx library's [README](https://github.com/karstx/hidra) describes an asynchronous API (with native blocking `.wait()`) across Windows (`hid.dll`/`SetupAPI`), Linux `hidraw`, macOS, and browser WebHID. Optional [`nusb` backend](https://github.com/karstx/hidra/blob/master/src/backend/nusb.rs) performs raw USB operations and can take exclusive ownership of a USB interface, unlike the normal OS HID path.
+
+**Source details and K758 applicability:**
+- [`src/backend/windows.rs`](https://github.com/karstx/hidra/blob/master/src/backend/windows.rs): Windows HID enumeration, overlapped `ReadFile`/`WriteFile` and feature report I/O, configurable write timeout, cancellation/disconnection handling and descriptor reconstruction through documented `HidP` capabilities. Potentially useful transport error-handling patterns.
+- [`src/device_info.rs`](https://github.com/karstx/hidra/blob/master/src/device_info.rs): device interface paths, usage page, usage and interface number. Fits our requirement to explicitly select K758 `MI_01` / `FF1C:0092`, but a path or VID/PID alone is **not** a permanent device fingerprint.
+- [`src/descriptor/parse.rs`](https://github.com/karstx/hidra/blob/master/src/descriptor/parse.rs) and [`src/report_info.rs`](https://github.com/karstx/hidra/blob/master/src/report_info.rs): standalone HID **report-descriptor** model: collections, report IDs, usages, input/output/feature fields, bit widths and offsets. This is the **most directly useful additional feature** for offline K758 HID report inspection, particularly distinguishing a vendor input report from a K758 config output report. Descriptors describe the *structure* and *capabilities* of reports, not undocumented proprietary command semantics or exact physical key identities.
+- [`src/descriptor/build.rs`](https://github.com/karstx/hidra/blob/master/src/descriptor/build.rs): report-descriptor construction useful for synthetic/mock HID test fixtures. Building a descriptor does **not** reprogram the stock K758's firmware/USB descriptor.
+
+| Area | What karstx/hidra does | K758 conclusion |
+|---|---|---|
+| **Input capture** | Reads input reports from an opened HID device; parses descriptors | **Useful** for vendor report decoding and mock tests; **not** a Windows `WM_INPUT` interceptor for ordinary keyboard event attribution |
+| **RGB** | Raw HID I/O only, no K758 effect/LED commands | **No direct support**; the K758 protocol codec remains our responsibility |
+| **Macro binding** | No onboard K758 macro format, keymap decoder or software action engine | **No direct support**; use Yama/CK108 for firmware format and Neuron/HidForge for runtime mapping |
+| **Windows suppression** | None | Does not block the K758's original keyboard output |
+| **Firmware writes** | Generic HID output/feature transfer | Technically possible, but **unverified on our hardware**, unlike existing Rust `hidapi` path |
+
+**Recommendation:** **Do not replace `hidapi`** in our K758 Rust driver merely because another library is written in pure Rust. Our `hidapi::write` + `read_timeout` path has already passed nine hardware ACKs and independent readback on M1. We can borrow karstx/hidra's **descriptor parser** or test-fixture design as a separate, bounded utility and compare it against the actual K758 descriptor **read only**, without changing the proven transport. The optional raw USB `nusb` backend may claim an interface and require driver changes; it is **not** a safe drop-in Windows alternative for this keypad.
+
+For actual source-aware event interception see [HidRawData](https://github.com/djlastnight/HidRawData), [HidForge](https://github.com/KernelSpecter/hidforge) and [HIDeous](https://github.com/dero/HIDeous). A descriptor or a vendor report can only be translated to a physical KHID if a **specific switch-to-report relationship is independently demonstrated**.
+
+
+## 16. [douglaz/hidraw-rs](https://github.com/douglaz/hidraw-rs): Linux-only Rust HID transport
+
+This is a **Linux hidraw API/transport** library: enumerate and open `/dev/hidraw*`, exchange input/output/feature reports through kernel interfaces, handle timeouts and optionally use Tokio async calls. Its [README](https://github.com/douglaz/hidraw-rs) and [implementation status](https://github.com/douglaz/hidraw-rs/blob/master/IMPLEMENTATION_STATUS.md) explicitly say **Windows is unsupported**.
+
+- [`src/hidraw/device.rs`](https://github.com/douglaz/hidraw-rs/blob/master/src/hidraw/device.rs) and [`src/hidraw/ioctl.rs`](https://github.com/douglaz/hidraw-rs/blob/master/src/hidraw/ioctl.rs) implement Linux kernel HID I/O; [`src/async_io.rs`](https://github.com/douglaz/hidraw-rs/blob/master/src/async_io.rs) adds optional async behavior.
+- [`hidapi-compat`](https://github.com/douglaz/hidraw-rs/tree/master/hidapi-compat) exposes many familiar Rust `hidapi` API shapes, but is **not** a Windows replacement merely because its method names match.
+- [`src/protocol/framing.rs`](https://github.com/douglaz/hidraw-rs/blob/master/src/protocol/framing.rs) illustrates packet framing for another device family, not the K758's OEM protocol.
+
+**Input capture:** only Linux HID reports, no Windows Raw Input `WM_INPUT` and no keyboard suppression. **RGB:** no K758 LED protocol. **Macros/key binding:** neither a K758 macro codec nor a software mapping/action engine. **K758 use:** optional inspiration if adding a Linux backend someday, **not** an immediate change to our tested Windows transport.
+
+**Decision:** retain the proven `hidapi` crate with `windows-native`. Our successful K758 M1 transaction used `hidapi::write`, nine verified ACKs, and independent configuration readback. The Linux-only hidraw-rs alternative provides no benefit to the Windows-specific immediate KHID work.

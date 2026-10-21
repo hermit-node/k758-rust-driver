@@ -6,6 +6,10 @@ This is the companion to [README_WHAT_WE_TRIED.md](README_WHAT_WE_TRIED.md), whi
 
 **Additional KHID runtime references:** [Input Remapper](https://github.com/sezanzeb/input-remapper) and [Makima](https://github.com/cyber-sushi/makima) are assessed in [the expanded survey](README_BROAD_GITHUB_SURVEY.md#7-general-purpose-linux-remapping-engines-user-suggested), alongside [mlkamri's K596 G-key remapper](https://github.com/mlkamri/Redragon-Keyboards-G-Keys-Remapper). The former two provide software mapping engines; the latter provides a vendor-defined physical-key press notification on K596, **not yet verified on K758**.
 
+**Additional source comparisons:** [Wyrm](https://github.com/Maxwegy/wyrm), [HidRawData](https://github.com/djlastnight/HidRawData), [HIDAPI](https://github.com/libusb/hidapi), and [Spratley's separate HIDra](https://github.com/Spratley/HIDra) appear in the [expanded survey](README_BROAD_GITHUB_SURVEY.md). HIDAPI is already proven for K758 output-report configuration; Raw Input is a separate runtime input observer and cannot itself suppress the original VK.
+**Further libraries, assessed in the [expanded survey](README_BROAD_GITHUB_SURVEY.md):** [karstx/hidra](https://github.com/karstx/hidra) (pure Rust HID I/O and descriptor parsing) and [douglaz/hidraw-rs](https://github.com/douglaz/hidraw-rs) (Linux-only hidraw). Neither offers Windows per-device input suppression, K758 RGB/macro codecs or a replacement for the already verified K758 `hidapi` transport.
+
+
 
 ## Objective and boundary
 
