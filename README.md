@@ -2,6 +2,13 @@
 
 Standalone Windows Rust tools for the Redragon K758 keypad (SONiX `0C45:5004`). Independent of the PySide6 Studio and G13 bridge.
 
+## Investigation and roadmap documents
+
+- [Reference implementations + implementation plan](README_REFERENCE_IMPLEMENTATIONS.md) — six upstream projects compared for key assignments, onboard macro representation, physical key event capture and software KHID mapping; specific source links, gaps and staged Rust integration.
+- [What we already tried](README_WHAT_WE_TRIED.md) — K758 experiment ledger, working and failed USB methods, exact M1 nine-report restoration proof, tested/unverified boundaries and safest next tests.
+
+**Research status:** External implementations are references, not verified interchangeable K758 firmware. The standalone Rust backend has not yet implemented arbitrary macro editing or VK/HID-to-KHID physical key interception.
+
 **Verified 2026-10-20:** Rust sent all nine M1 configuration frames, received nine USB acknowledgments, and independently confirmed physical D's stored mapping changed from A to D. The remaining 191 keymap bytes, W's macro reference, and all four lighting blocks were unchanged. User-confirmed physical keypress testing is not yet recorded.
 
 ## Source files
