@@ -2,6 +2,10 @@
 
 **Status (2026-10-20): research and proposed implementation, NOT six tested K758 drivers.**
 This is the companion to [README_WHAT_WE_TRIED.md](README_WHAT_WE_TRIED.md), which records what our own K758 hardware actually did. For the verified on-device protocol, see [docs/PROTOCOL_NOTES.md](docs/PROTOCOL_NOTES.md).
+**New broader search:** [README_BROAD_GITHUB_SURVEY.md](README_BROAD_GITHUB_SURVEY.md) extends these original six references with key/macro projects from the full Redragon GitHub search, including firmware-level macro readers in K550 Yama and MotoSpeed CK108. [mlkamri's K596 G-key remapper](https://github.com/mlkamri/Redragon-Keyboards-G-Keys-Remapper) remains a primary input-event reference and is re-examined separately for KHID. It is a press-only vendor event bridge, not the K758 macro storage protocol.
+
+**Additional KHID runtime references:** [Input Remapper](https://github.com/sezanzeb/input-remapper) and [Makima](https://github.com/cyber-sushi/makima) are assessed in [the expanded survey](README_BROAD_GITHUB_SURVEY.md#7-general-purpose-linux-remapping-engines-user-suggested), alongside [mlkamri's K596 G-key remapper](https://github.com/mlkamri/Redragon-Keyboards-G-Keys-Remapper). The former two provide software mapping engines; the latter provides a vendor-defined physical-key press notification on K596, **not yet verified on K758**.
+
 
 ## Objective and boundary
 

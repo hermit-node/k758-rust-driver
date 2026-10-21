@@ -3,6 +3,10 @@
 Standalone Windows Rust tools for the Redragon K758 keypad (SONiX `0C45:5004`). Independent of the PySide6 Studio and G13 bridge.
 
 ## Investigation and roadmap documents
+**Expanded research (October 2026):** [Broad Redragon GitHub survey](README_BROAD_GITHUB_SURVEY.md) - prioritizes 19+ sources, including K550 Yama, MotoSpeed CK108, and [mlkamri's K596 G-key bridge](https://github.com/mlkamri/Redragon-Keyboards-G-Keys-Remapper). A newly verified offline comparison of our 82-byte K758 M1 macro capture with the Yama/CK108 format is recorded there.
+
+**General-purpose remapping references:** [Input Remapper](https://github.com/sezanzeb/input-remapper) (software macros, combinations, hold/release) and [Makima](https://github.com/cyber-sushi/makima) (Rust device-specific mappings, profiles, hotplug) are now evaluated in the [expanded survey](README_BROAD_GITHUB_SURVEY.md#7-general-purpose-linux-remapping-engines-user-suggested). Both are Linux-native, so their input-grab mechanics are not portable to Windows.
+
 
 - [Reference implementations + implementation plan](README_REFERENCE_IMPLEMENTATIONS.md) — six upstream projects compared for key assignments, onboard macro representation, physical key event capture and software KHID mapping; specific source links, gaps and staged Rust integration.
 - [What we already tried](README_WHAT_WE_TRIED.md) — K758 experiment ledger, working and failed USB methods, exact M1 nine-report restoration proof, tested/unverified boundaries and safest next tests.

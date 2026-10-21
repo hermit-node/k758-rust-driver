@@ -2,6 +2,14 @@
 
 **Evidence ledger last updated 2026-10-20.** This document reports **our own K758 testing**; it does not claim that a feature in another Redragon model works here. For upstream options and next-step design, see [README_REFERENCE_IMPLEMENTATIONS.md](README_REFERENCE_IMPLEMENTATIONS.md). For reusable protocol detail, see [docs/PROTOCOL_NOTES.md](docs/PROTOCOL_NOTES.md).
 
+## Experiment 9 (2026-10-20): offline macro-blob decoding against independent repositories
+
+Our research found two near-protocol matches: [Yama](https://github.com/aldoboomer/redragon-yama-control) and [MotoSpeed CK108](https://github.com/FireDeveloper/CK108). Both implement a 64-byte vendor report with checksum and read/write macro command family `0x09`/`0x0A`. **The K758 macro read command `0x09` has not been tried on live hardware.**
+
+**New actual test, offline only:** We reconstructed the original macro payload of `fixtures/m1_D_A_to_D_PREVIEW_only.json` from two historical M1 `0x0A` frames at offsets 0 and 56. The result was **82 bytes**, with `AA 55` magic and exactly matching 82-byte declared size, one macro, stored name `Macro1`, 12 four-byte events (six key-down and six key-up), repeat count one, and no out-of-bounds offsets. Delays used 10-ms units and totaled 550 ms across event records. A decode and reconstruction according to the Yama/CK108 layout produced **identical 82/82 bytes**, without reading or writing the keypad. This establishes strong matching serialized macro layout for the historical K758 M1 image.
+
+It **does not** establish live macro EEPROM readback, macro survival after a new firmware write, vendor-origin reports when pressing a macro key, or native KHID output. For the high-priority **K596 vendor event** research (Windows `WM_INPUT` and press-only `08 11 C0..C9`) and the complete expanded reference ranking, see [README_BROAD_GITHUB_SURVEY.md](README_BROAD_GITHUB_SURVEY.md).
+
 ## Status at a glance
 
 | Capability | Current confidence | What we have / have not proven |
